@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { UploadArea } from './components/UploadArea';
 import { ScheduleGrid } from './components/ScheduleGrid';
@@ -7,21 +7,61 @@ import { analyzeScheduleImage } from './services/geminiService';
 import { ScheduleData, ProcessingState, Course } from './types';
 import { AlertCircle, Key, Globe, ChevronDown, ChevronUp } from 'lucide-react';
 
+// Storage Keys
+const STORAGE_KEYS = {
+  DATA: 'smart_schedule_data',
+  API_KEY: 'smart_schedule_api_key',
+  BASE_URL: 'smart_schedule_base_url'
+};
+
 export default function App() {
-  const [scheduleData, setScheduleData] = useState<ScheduleData | null>(null);
+  // Initialize state from LocalStorage if available
+  const [scheduleData, setScheduleData] = useState<ScheduleData | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.DATA);
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
   const [processingState, setProcessingState] = useState<ProcessingState>({ status: 'idle' });
-  const [customApiKey, setCustomApiKey] = useState('');
-  const [customBaseUrl, setCustomBaseUrl] = useState('');
+  
+  // Load credentials from storage, or default to empty
+  const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem(STORAGE_KEYS.API_KEY) || '');
+  const [customBaseUrl, setCustomBaseUrl] = useState(() => localStorage.getItem(STORAGE_KEYS.BASE_URL) || '');
+  
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Helper to persist data updates
+  const updateScheduleData = (newData: ScheduleData | null) => {
+    setScheduleData(newData);
+    if (newData) {
+      localStorage.setItem(STORAGE_KEYS.DATA, JSON.stringify(newData));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.DATA);
+    }
+  };
 
   const handleImageSelected = async (file: File) => {
     setProcessingState({ status: 'analyzing' });
-    setScheduleData(null);
+    // Don't clear immediately to avoid flickering if we have old data, 
+    // but usually we want to clear old data when new analysis starts.
+    // For now, let's keep it null during analysis.
+    updateScheduleData(null);
 
     try {
       // Trim the key and base url before sending
-      const data = await analyzeScheduleImage(file, customApiKey.trim(), customBaseUrl.trim());
-      setScheduleData(data);
+      const apiKeyToUse = customApiKey.trim();
+      const baseUrlToUse = customBaseUrl.trim();
+
+      const data = await analyzeScheduleImage(file, apiKeyToUse, baseUrlToUse);
+      
+      // SUCCESS: Save everything to LocalStorage
+      updateScheduleData(data);
+      localStorage.setItem(STORAGE_KEYS.API_KEY, apiKeyToUse);
+      localStorage.setItem(STORAGE_KEYS.BASE_URL, baseUrlToUse);
+
       setProcessingState({ status: 'success', message: '课表识别成功！' });
     } catch (error: any) {
       console.error(error);
@@ -33,38 +73,36 @@ export default function App() {
   };
 
   const handleReset = () => {
-    setScheduleData(null);
+    // Clear data but KEEP credentials for convenience
+    updateScheduleData(null);
     setProcessingState({ status: 'idle' });
   };
 
   const handleUpdateCourse = (updatedCourse: Course) => {
-    setScheduleData(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        courses: prev.courses.map(c => c.id === updatedCourse.id ? updatedCourse : c)
-      };
-    });
+    if (!scheduleData) return;
+    const newData = {
+      ...scheduleData,
+      courses: scheduleData.courses.map(c => c.id === updatedCourse.id ? updatedCourse : c)
+    };
+    updateScheduleData(newData);
   };
 
   const handleAddCourse = (newCourse: Course) => {
-    setScheduleData(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        courses: [...prev.courses, newCourse]
-      };
-    });
+    if (!scheduleData) return;
+    const newData = {
+      ...scheduleData,
+      courses: [...scheduleData.courses, newCourse]
+    };
+    updateScheduleData(newData);
   };
 
   const handleDeleteCourse = (courseId: string) => {
-    setScheduleData(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        courses: prev.courses.filter(c => c.id !== courseId)
-      };
-    });
+    if (!scheduleData) return;
+    const newData = {
+      ...scheduleData,
+      courses: scheduleData.courses.filter(c => c.id !== courseId)
+    };
+    updateScheduleData(newData);
   };
 
   const isSuccess = !!scheduleData;

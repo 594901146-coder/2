@@ -1,0 +1,7 @@
+{
+  "name": "智能课表识别 (Smart Schedule)",
+  "description": "Upload a photo of your class schedule, and AI will instantly convert it into a structured, digital timetable.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

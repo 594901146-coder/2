@@ -48,49 +48,40 @@ export const analyzeScheduleImage = async (file: File, apiKey?: string, baseUrl?
             }
           },
           {
-            text: `You are an expert visual data analyst for academic timetables. Your goal is to generate a perfect digital replica of this schedule by combining text recognition with strict geometric analysis.
+            text: `Perfrom a rigorous visual extraction of this academic timetable. 
+            
+            **MISSION CRITICAL INSTRUCTIONS:**
+            1. **GRID MAPPING**: Imagine a grid overlay on the image. The columns are Days (Mon-Sun). The rows are Periods (1, 2, 3...).
+            2. **MERGED CELL DETECTION**: This is the most common error source. 
+               - If a colored block visually spans vertically across the height of Row 1 AND Row 2, it is a single course with startPeriod=1 and endPeriod=2.
+               - Look for horizontal divider lines. If there is text in Row 1, but NO black line separating it from Row 2, and the background color is continuous, IT IS ONE COURSE.
+            3. **EMPTY SLOT VALIDATION**: If a grid cell is white/blank, DO NOT create a course there. Only extract cells that contain text.
+            4. **TEXT OCR**: Extract the Subject (bold text), Teacher (names), and Location (room codes).
 
-            **COMPREHENSIVE IDENTIFICATION STRATEGY:**
-            You must verify your findings using three different methods simultaneously before outputting data:
-            1. **Text Reading**: What does the text say? (Subject, Room, Teacher)
-            2. **Grid Topology**: Where are the lines? (The black/gray grid lines are the absolute truth).
-            3. **Visual Proportions**: How tall is the colored block relative to the row numbers on the left?
-
-            **CRITICAL RULES FOR ACCURACY:**
-
-            1. **THE "GRID LINE" LAW (Fixing Duration Errors)**:
-               - **IGNORE TEXT SPACING**: A course duration is NOT determined by how much space the text takes. It is determined by the **Cell Borders**.
-               - **LOOK FOR DIVIDERS**: If a colored block starts at Row 1 and there is NO solid horizontal divider line until the bottom of Row 4, **IT IS A 4-PERIOD COURSE**.
-               - **EMPTY SPACE IS VALID**: It is common for text to sit at the top of a large 4-period box. The empty colored space below the text is part of the same course. Do not cut it short.
-
-            2. **HEIGHT-BASED VERIFICATION**:
-               - Look at the "Period" numbers on the left (1, 2, 3, 4...).
-               - Measure the visual height of one standard row (e.g., Period 1).
-               - If a course block is roughly 4 times that height, it spans 4 periods.
-               - **Self-Correction**: If you extract a course as "Periods 1-2" but the block visually extends down to align with "Period 4" on the left, YOU ARE WRONG. Correct it to "1-4".
-
-            3. **COLUMN ALIGNMENT**:
-               - Strictly align vertical columns with the Day headers (Mon, Tue, Wed...).
-               - Do not guess the day. Trace the vertical line up to the header.
-
-            4. **DATA FIELDS**:
-               - **Subject**: Main bold text.
-               - **Location**: Often codes like "A101", "3-205".
-               - **Time**: If specific times (e.g., 08:00-09:35) are written in the row header or the cell, extract them. 
-               - **Period Mapping**: Map the visual rows strictly to the numbers 1, 2, 3, 4, etc.
-
-            Output pure JSON matching the schema.`
+            **STEP-BY-STEP REASONING REQUIRED:**
+            Before filling the 'courses' array, you MUST fill the 'analysis_log' string field. In this string, describe the visual structure you see. 
+            Example: "I see a header row with Mon-Fri. On Monday, there is a large blue block spanning rows 1 and 2 containing 'Math'. Row 3 is empty. Row 4 has 'English'..."
+            
+            **This thinking process will ensure your JSON output is accurate.**
+            `
           }
         ]
       },
       config: {
-        // Significantly increased thinking budget for comprehensive reasoning and verification
-        thinkingConfig: { thinkingBudget: 16000 },
+        // Adjusted thinking budget to 12000 to stay within gemini-2.5-flash limits
+        thinkingConfig: { thinkingBudget: 12000 },
+        // Low temperature for factual extraction
+        temperature: 0.1,
+        topP: 0.95,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            scheduleName: { type: Type.STRING, description: "Title of the schedule (e.g. 'Class Schedule 2024')" },
+            analysis_log: { 
+              type: Type.STRING, 
+              description: "A verbal description of the grid structure, merged cells, and text found. Use this to verify your own findings before generating the list." 
+            },
+            scheduleName: { type: Type.STRING, description: "Title of the schedule" },
             courses: {
               type: Type.ARRAY,
               items: {
@@ -102,8 +93,8 @@ export const analyzeScheduleImage = async (file: File, apiKey?: string, baseUrl?
                       "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
                     ] 
                   },
-                  startPeriod: { type: Type.INTEGER, description: "Row number (1-based) where the cell's TOP border aligns." },
-                  endPeriod: { type: Type.INTEGER, description: "Row number (1-based) where the cell's BOTTOM border aligns." },
+                  startPeriod: { type: Type.INTEGER, description: "The visual start row (1-based index)" },
+                  endPeriod: { type: Type.INTEGER, description: "The visual end row (inclusive)" },
                   subject: { type: Type.STRING },
                   location: { type: Type.STRING, nullable: true },
                   teacher: { type: Type.STRING, nullable: true },
@@ -114,7 +105,7 @@ export const analyzeScheduleImage = async (file: File, apiKey?: string, baseUrl?
               }
             }
           },
-          required: ["courses"]
+          required: ["courses", "analysis_log"]
         }
       }
     });
@@ -126,18 +117,25 @@ export const analyzeScheduleImage = async (file: File, apiKey?: string, baseUrl?
 
     try {
       const parsedData = JSON.parse(text) as ScheduleData;
-      // Inject unique IDs for each course to support editing/deleting
+      
+      // Inject unique IDs for each course
       parsedData.courses = parsedData.courses.map(course => ({
         ...course,
         id: crypto.randomUUID()
       }));
+
+      // Log the AI's reasoning for debugging purposes
+      if ((parsedData as any).analysis_log) {
+        console.log("AI Analysis Log:", (parsedData as any).analysis_log);
+        parsedData.analysisReasoning = (parsedData as any).analysis_log;
+      }
+
       return parsedData;
     } catch (e) {
       console.error("Failed to parse JSON", e);
       throw new Error("Failed to parse schedule data");
     }
   } catch (error: any) {
-    // Enhance error handling for API Key issues
     const errorStr = error.toString();
     const errorMessage = error.message || "";
     
@@ -151,7 +149,6 @@ export const analyzeScheduleImage = async (file: File, apiKey?: string, baseUrl?
       throw new Error("API Key 无效或未授权。如果您使用的是第三方/中转 Key，请务必填写正确的【接口地址/Base URL】。");
     }
     
-    // Re-throw other errors
     throw error;
   }
 };

@@ -24,6 +24,7 @@ export interface Course {
 export interface ScheduleData {
   scheduleName?: string;
   courses: Course[];
+  analysisReasoning?: string; // Optional field to store AI's thought process
 }
 
 export interface ProcessingState {

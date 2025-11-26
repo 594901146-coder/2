@@ -17,7 +17,8 @@ export default function App() {
     setScheduleData(null);
 
     try {
-      const data = await analyzeScheduleImage(file, customApiKey);
+      // Trim the key before sending
+      const data = await analyzeScheduleImage(file, customApiKey.trim());
       setScheduleData(data);
       setProcessingState({ status: 'success', message: '课表识别成功！' });
     } catch (error: any) {

@@ -5,20 +5,22 @@ import { ScheduleGrid } from './components/ScheduleGrid';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { analyzeScheduleImage } from './services/geminiService';
 import { ScheduleData, ProcessingState, Course } from './types';
-import { AlertCircle, Key } from 'lucide-react';
+import { AlertCircle, Key, Globe, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function App() {
   const [scheduleData, setScheduleData] = useState<ScheduleData | null>(null);
   const [processingState, setProcessingState] = useState<ProcessingState>({ status: 'idle' });
   const [customApiKey, setCustomApiKey] = useState('');
+  const [customBaseUrl, setCustomBaseUrl] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleImageSelected = async (file: File) => {
     setProcessingState({ status: 'analyzing' });
     setScheduleData(null);
 
     try {
-      // Trim the key before sending
-      const data = await analyzeScheduleImage(file, customApiKey.trim());
+      // Trim the key and base url before sending
+      const data = await analyzeScheduleImage(file, customApiKey.trim(), customBaseUrl.trim());
       setScheduleData(data);
       setProcessingState({ status: 'success', message: '课表识别成功！' });
     } catch (error: any) {
@@ -82,21 +84,57 @@ export default function App() {
 
             <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-xl border border-white/60 p-6 sm:p-8 transition-all duration-300">
               
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center">
-                  <div className="p-1 bg-indigo-100 rounded mr-2">
-                    <Key className="w-3 h-3 text-indigo-600" />
-                  </div>
-                  API Key (可选)
-                </label>
-                <input
-                  type="password"
-                  value={customApiKey}
-                  onChange={(e) => setCustomApiKey(e.target.value)}
-                  placeholder="如未配置环境变量，请在此输入"
-                  className="w-full px-4 py-3 bg-white/50 border border-gray-200/60 rounded-xl focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 outline-none transition-all text-sm shadow-inner"
-                  disabled={processingState.status === 'analyzing'}
-                />
+              <div className="mb-6 space-y-3">
+                {/* API Key Input */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center">
+                    <div className="p-1 bg-indigo-100 rounded mr-2">
+                      <Key className="w-3 h-3 text-indigo-600" />
+                    </div>
+                    API Key (必填)
+                  </label>
+                  <input
+                    type="password"
+                    value={customApiKey}
+                    onChange={(e) => setCustomApiKey(e.target.value)}
+                    placeholder="请输入您的 Google Gemini API Key"
+                    className="w-full px-4 py-3 bg-white/50 border border-gray-200/60 rounded-xl focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 outline-none transition-all text-sm shadow-inner"
+                    disabled={processingState.status === 'analyzing'}
+                  />
+                </div>
+
+                {/* Advanced Settings Toggle */}
+                <div>
+                  <button 
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="flex items-center text-xs text-gray-500 hover:text-indigo-600 font-medium transition-colors"
+                  >
+                    {showAdvanced ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
+                    高级设置 (代理/接口地址)
+                  </button>
+
+                  {showAdvanced && (
+                    <div className="mt-2 animate-fade-in">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center">
+                        <div className="p-1 bg-blue-100 rounded mr-2">
+                          <Globe className="w-3 h-3 text-blue-600" />
+                        </div>
+                        Base URL (选填)
+                      </label>
+                      <input
+                        type="text"
+                        value={customBaseUrl}
+                        onChange={(e) => setCustomBaseUrl(e.target.value)}
+                        placeholder="例如: https://generativelanguage.googleapis.com"
+                        className="w-full px-4 py-3 bg-white/50 border border-gray-200/60 rounded-xl focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all text-sm shadow-inner placeholder-gray-400"
+                        disabled={processingState.status === 'analyzing'}
+                      />
+                      <p className="text-[10px] text-gray-400 mt-1 ml-1">
+                        如果您使用中转/代理 Key，请在此填写服务商提供的接口地址。默认留空即可。
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <UploadArea 

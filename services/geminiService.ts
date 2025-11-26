@@ -16,7 +16,7 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
   });
 };
 
-export const analyzeScheduleImage = async (file: File, apiKey?: string): Promise<ScheduleData> => {
+export const analyzeScheduleImage = async (file: File, apiKey?: string, baseUrl?: string): Promise<ScheduleData> => {
   // Use provided key or fallback to environment variable, and trim whitespace
   const keyToUse = (apiKey || process.env.API_KEY || "").trim();
   
@@ -24,7 +24,15 @@ export const analyzeScheduleImage = async (file: File, apiKey?: string): Promise
     throw new Error("API Key 未配置。请在输入框中填写您的 Google Gemini API Key，或配置环境变量。");
   }
 
-  const ai = new GoogleGenAI({ apiKey: keyToUse });
+  // Configure client options
+  const clientOptions: any = { apiKey: keyToUse };
+  
+  // Apply custom Base URL if provided (Essential for proxy/third-party keys)
+  if (baseUrl && baseUrl.trim().length > 0) {
+    clientOptions.baseUrl = baseUrl.trim();
+  }
+
+  const ai = new GoogleGenAI(clientOptions);
 
   const base64Data = await fileToGenerativePart(file);
 
@@ -133,12 +141,14 @@ export const analyzeScheduleImage = async (file: File, apiKey?: string): Promise
     const errorStr = error.toString();
     const errorMessage = error.message || "";
     
+    console.error("Gemini API Error:", error);
+    
     if (
       errorStr.includes("API_KEY_INVALID") || 
       errorStr.includes("API key not valid") ||
       errorMessage.includes("API key not valid")
     ) {
-      throw new Error("API Key 无效。Google 拒绝了该 Key，请检查输入是否正确（不要包含多余空格）。");
+      throw new Error("API Key 无效或未授权。如果您使用的是第三方/中转 Key，请务必填写正确的【接口地址/Base URL】。");
     }
     
     // Re-throw other errors
